@@ -4,8 +4,7 @@
 
 import pytest
 
-
-from cpy_amm import cpy_amm
+# from cpy_amm import cpy_amm
 
 
 @pytest.fixture

@@ -46,6 +46,5 @@ Once you have a copy of the source, you can install it with:
 
     $ python setup.py install
 
-
 .. _Github repo: https://github.com/lehajam/cpy_amm
 .. _tarball: https://github.com/lehajam/cpy_amm/tarball/master
