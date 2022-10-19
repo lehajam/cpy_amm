@@ -8,6 +8,8 @@ Welcome to cpy_amm's documentation!
    readme
    installation
    usage
+   examples/uniswap_v2.ipynb
+   examples/terra_market_module.ipynb
    modules
    contributing
    authors
