@@ -1,6 +1,9 @@
 # Config file for automatic testing at travis-ci.com
 
 language: python
+
+dist: focal
+
 python:
   - 3.10
 
@@ -23,4 +26,4 @@ deploy:
   on:
     tags: true
     repo: lehajam/cpy_amm
-    python: 3.10
+    python: "3.10"
