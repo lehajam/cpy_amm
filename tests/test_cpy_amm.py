@@ -9,7 +9,7 @@ from cpy_amm.swap import Pool, constant_product_curve, constant_product_swap
 
 
 def test_pool_creation():
-    """Tests creation of a pool"""
+    """Tests creation of a pool."""
     ticker = "A"
     reserve = 100
     pool = Pool(ticker, reserve)
@@ -38,8 +38,8 @@ def test_pool_creation():
     ],
 )
 def test_constant_product_curve(reserve_1, reserve_2):
-    """Tests that the constant product curve remains invariant in the XY
-    curve produced by constant_product_curve"""
+    """Tests that the constant product curve remains invariant in the XY curve produced
+    by constant_product_curve."""
     x, y = constant_product_curve(
         Pool("A", reserve_1),
         Pool("B", reserve_2),
@@ -73,7 +73,7 @@ def test_constant_product_curve(reserve_1, reserve_2):
     ],
 )
 def test_constant_product_swap(reserve_1, reserve_2, precision):
-    """Tests that swaping produces the same curve as constant_product_curve"""
+    """Tests that swaping produces the same curve as constant_product_curve."""
     x, y = constant_product_curve(
         Pool("A", reserve_1),
         Pool("B", reserve_2),

@@ -4,10 +4,10 @@ cpy\_amm package
 Submodules
 ----------
 
-cpy\_amm.bokeh\_swap module
----------------------------
+cpy\_amm.plotting module
+------------------------
 
-.. automodule:: cpy_amm.bokeh_swap
+.. automodule:: cpy_amm.plotting
    :members:
    :undoc-members:
    :show-inheritance:

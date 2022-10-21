@@ -1,5 +1,3 @@
-from typing import Tuple
-
 from bokeh.io import show
 from bokeh.layouts import column, grid
 from bokeh.models import ColumnDataSource, HoverTool
@@ -7,6 +5,7 @@ from bokeh.plotting import Figure, figure
 from bokeh.transform import dodge
 
 from .swap import (
+    MidPrice,
     Pool,
     constant_product_curve,
     constant_product_swap,
@@ -22,12 +21,42 @@ def new_constant_product_figure(
     k: float | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
-    num: float | None = None,
+    num: int | None = None,
     bokeh_figure: Figure | None = None,
     plot_width=900,
     plot_height=600,
 ):
-    """Plots the constant product AMM curve"""
+    """Plots the constant product AMM curve Y = K / X
+
+    Args:
+        pool_1 (Pool):
+            Liquidity pool 1
+
+        pool_2 (Pool):
+            Liquidity pool 2
+
+        k (float, optional):
+            Constant product invariant
+
+        x_min (float, optional):
+            Start of the range for the x-axis
+
+        x_max (float, optional):
+            End of the range for the x-axis
+
+        num (int, optional):
+            Number of points to plot
+
+        bokeh_figure (Figure, optional):
+            Bokeh figure to plot on
+
+        plot_width (int, optional):
+            Width of the plot
+
+        plot_height (int, optional):
+            Height of the plot
+
+    """
     p = bokeh_figure or figure(
         title=f"Constant Product AMM Curve for the pair {pool_1.ticker}/{pool_2.ticker}",
         plot_width=plot_width,
@@ -39,8 +68,11 @@ def new_constant_product_figure(
         pool_1, pool_2, k=k, x_min=x_min, x_max=x_max, num=num
     )
     p.line(x, y, line_width=2, color="navy", alpha=0.6, legend_label="Y=K/X")
+    # display current mid price of the pools
     p = with_price_info(
-        p, (pool_1.ticker, pool_1.balance), (pool_2.ticker, pool_2.balance), "Mid Price"
+        p,
+        MidPrice(f"{pool_1.ticker}/{pool_2.ticker}", pool_1.balance, pool_2.balance),
+        "Mid Price",
     )
     return p
 
@@ -52,43 +84,63 @@ def new_price_impact_figure(
     dx: float | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
-    num: float | None = None,
+    num: int | None = None,
     precision: float | None = None,
     bokeh_figure: Figure | None = None,
     plot_width=900,
     plot_height=600,
 ):
-    """Plots the price impact range"""
-    p = bokeh_figure or figure(
-        title=f"Constant Product AMM Curve for the pair {pool_1.ticker}/{pool_2.ticker}",
-        plot_width=plot_width,
-        plot_height=plot_height,
+    """Plots the constant product AMM curve with price impact range for the oder of size
+    dx.
+
+    Args:
+        pool_1 (Pool):
+            Liquidity pool 1
+
+        pool_2 (Pool):
+            Liquidity pool 2
+
+        k (float, optional):
+            Constant product invariant
+
+        dx (float, optional):
+            The order size
+
+        x_min (float, optional):
+            Start of the range for the x-axis
+
+        x_max (float, optional):
+            End of the range for the x-axis
+
+        num (int, optional):
+            Number of points to plot
+
+        bokeh_figure (Figure, optional):
+            Bokeh figure to plot on
+
+        plot_width (int, optional):
+            Width of the plot
+
+        plot_height (int, optional):
+            Height of the plot
+
+    """
+    p = new_constant_product_figure(
+        pool_1, pool_2, k, x_min, x_max, num, bokeh_figure, plot_width, plot_height
     )
-    p.xaxis.axis_label = f"Amount {pool_1.ticker}"
-    p.yaxis.axis_label = f"Amount {pool_2.ticker}"
-    # constant product curve & price impact
-    x, y = constant_product_curve(
-        pool_1, pool_2, k=k, x_min=x_min, x_max=x_max, num=num
-    )
-    (
-        (x_start, y_start, p_start),
-        (x_mid, y_mid, p_mid),
-        (x_end, y_end, p_end),
-    ) = price_impact_range(pool_1, pool_2, k=k, dx=dx, precision=precision)
-    # plot constant product curve
-    p.line(x, y, line_width=2, color="navy", alpha=0.6, legend_label="Y=K/X")
+    # coomputes price impact range
+    price_impact = price_impact_range(pool_1, pool_2, k=k, dx=dx, precision=precision)
     # plot price impact range
-    p.line([x_start, x_end], [y_start, y_end], line_width=20, color="red", alpha=0.3)
+    p.line(
+        [price_impact.start.x, price_impact.end.x],
+        [price_impact.start.y, price_impact.end.y],
+        line_width=20,
+        color="red",
+        alpha=0.3,
+    )
     # add price impact range tooltips
-    p = with_price_info(
-        p, (pool_1.ticker, x_start), (pool_2.ticker, y_start), "Mid Price (before swap)"
-    )
-    p = with_price_info(
-        p, (pool_1.ticker, x_mid), (pool_2.ticker, y_mid), "Swap Execution Price"
-    )
-    p = with_price_info(
-        p, (pool_1.ticker, x_end), (pool_2.ticker, y_end), "Mid Price (after swap)"
-    )
+    p = with_price_info(p, price_impact.mid, "Swap Execution Price")
+    p = with_price_info(p, price_impact.end, "Mid Price (after swap)")
     return p
 
 
@@ -98,11 +150,43 @@ def new_order_book_figure(
     k: float | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
-    num: float | None = None,
+    num: int | None = None,
     plot_width=900,
     plot_height=600,
 ):
-    """Plots the constant product AMM curve"""
+    """Plots the cumulative quantity at any mid price according to the formula from the
+    paper "Order Book Depth and Liquidity Provision in Automated Market Makers. Orders
+    under current mid price are on the bid, and those above the ask.
+
+    Args:
+        pool_1 (Pool):
+            Liquidity pool 1
+
+        pool_2 (Pool):
+            Liquidity pool 2
+
+        k (float, optional):
+            Constant product invariant
+
+        x_min (float, optional):
+            Start of the range for the x-axis
+
+        x_max (float, optional):
+            End of the range for the x-axis
+
+        num (int, optional):
+            Number of points to plot
+
+        bokeh_figure (Figure, optional):
+            Bokeh figure to plot on
+
+        plot_width (int, optional):
+            Width of the plot
+
+        plot_height (int, optional):
+            Height of the plot
+
+    """
     p = figure(
         title=f"Constant Product AMM Depth for the pair {pool_1.ticker}/{pool_2.ticker}",
         plot_width=plot_width,
@@ -131,7 +215,25 @@ def new_order_book_figure(
 def new_pool_figure(
     pool_1: Pool, pool_2: Pool, steps=None, plot_width=900, plot_height=600
 ):
-    """Plots the pool balance history"""
+    """Plots eveolution of token reserves by steps (time, simulations, blocks etc.).
+
+    Args:
+        pool_1 (Pool):
+            Liquidity pool 1
+
+        pool_2 (Pool):
+            Liquidity pool 2
+
+        steps (list, optional):
+            List of steps
+
+        plot_width (int, optional):
+            Width of the plot
+
+        plot_height (int, optional):
+            Height of the plot
+
+    """
     TOOLTIPS = [
         (f"{pool_1.ticker}", f"@{pool_1.ticker}" + "{0,0.000}"),
         (f"{pool_2.ticker}", f"@{pool_2.ticker}" + "{0,0.000}"),
@@ -177,23 +279,19 @@ def new_pool_figure(
     return p
 
 
-def with_price_info(
-    p, x: Tuple[str, float], y: Tuple[str, float], price_label: str
-) -> figure:
-    """Hover tool with price info for the given point"""
-    ticker_1, balance_1 = x
-    ticker_2, balance_2 = y
-    point_id = str(hash(str(balance_1) + str(balance_2)))
-    p.circle([balance_1], [balance_2], size=10, color="red", alpha=0.4, name=point_id)
+def with_price_info(p, mid: MidPrice, price_label: str) -> figure:
+    """Hover tool with price info for the given point."""
+    point_id = str(hash(str(mid.x) + str(mid.y)))
+    p.circle([mid.x], [mid.y], size=10, color="red", alpha=0.4, name=point_id)
     # use hover tool to display info
     hover = p.select(dict(type=HoverTool, names=[point_id]))
     if not hover:
         hover = HoverTool(names=[point_id])
         p.add_tools(hover)
     hover.tooltips = [
-        (f"{ticker_1}", f"{balance_1:.3f}"),
-        (f"{ticker_2}", f"{balance_2:.3f}"),
-        (f"{price_label}", f"{balance_1/balance_2:.3f}"),
+        (f"{mid.x_ticker}", f"{mid.x:.3f}"),
+        (f"{mid.y_ticker}", f"{mid.y:.3f}"),
+        (f"{price_label}", f"{mid.mid_price:.3f}"),
     ]
     return p
 
@@ -205,12 +303,51 @@ def cp_amm_autoviz(
     dx: float | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
-    num: float | None = None,
+    num: int | None = None,
     precision: float | None = None,
     plot_width=900,
     plot_height=600,
     compact=True,
 ):
+    """Autoviz for liquidity pools.
+
+    Args:
+        pool_1 (Pool):
+            Liquidity pool 1
+
+        pool_2 (Pool):
+            Liquidity pool 2
+
+        k (float, optional):
+            Constant product invariant
+
+        dx (float, optional):
+            The order size
+
+        x_min (float, optional):
+            Start of the range for the x-axis
+
+        x_max (float, optional):
+            End of the range for the x-axis
+
+        num (int, optional):
+            Number of points to plot
+
+        precision (float, optional):
+            Precision at which the invariant is evaluated
+
+        plot_width (int, optional):
+            Width of the plot
+
+        plot_height (int, optional):
+            Height of the plot
+
+        compact (bool, optional):
+            If True, 2 plots per row are displayed
+            Else, 1 plot per row is displayed
+
+    """
+
     dx = dx or 0.1 * pool_1.balance
     p1 = new_constant_product_figure(
         pool_1,
