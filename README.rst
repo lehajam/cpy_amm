@@ -30,7 +30,24 @@ A package for quantitative analysis and easy data visualisation of constant prod
 Features
 --------
 
-* TODO
+* Swap against liquidity pools
+* Swap price calculation
+* Data visualisation
+* Simulation
+
+.. code-block:: python
+
+    from cpy_amm.swap import init_liquidity, MarketQuote, constant_product_swap
+    from cpy_amm.plotting import cp_amm_autoviz
+
+    # USDT/USD market price
+    usdt_usd = MarketQuote("USDT/USD", 1)
+    # UNI/USD market price
+    uni_usd = MarketQuote("UNI/USD", 6.32)
+    # initialize 2 pools with 10000 USD
+    usdt_pool, uni_pool, k = init_liquidity(10000, usdt_usd, uni_usd)
+    # plotting data
+    cp_amm_autoviz(usdt_pool, uni_pool, compact=True)
 
 Credits
 -------
