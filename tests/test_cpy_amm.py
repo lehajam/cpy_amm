@@ -31,10 +31,11 @@ def test_pool_creation():
         (10000000, 10000000),
         (100000000, 100000000),
         (1000000000, 1000000000),
-        (
-            134566.678899,
-            134566.67889927,
-        ),
+        (134566.678899, 134566.67889927),
+        (0.333333333333333, 0.333333333333333),
+        (0.333333333333333, 0.1111111111111110),
+        (1000000000.033647474859, 1000000000.039484859),
+        (10000000000000.333333333333333, 10000000000000.67889927),
     ],
 )
 def test_constant_product_curve(reserve_1, reserve_2):
@@ -54,25 +55,25 @@ def test_constant_product_curve(reserve_1, reserve_2):
 
 
 @pytest.mark.parametrize(
-    "reserve_1,reserve_2,precision",
+    "reserve_1,reserve_2",
     [
-        (10, 2, 1e-14),
-        (100, 100, 1e-10),
-        (1000, 1000, 1e-09),
-        (10000, 10000, 1e-07),
-        (100000, 100000, 1e-05),
-        (1000000, 1000000, 1e-3),
-        (10000000, 10000000, 1e-1),
-        (100000000, 100000000, 1e1),
-        (1000000000, 1000000000, 1e3),
-        (
-            134566.678899,
-            134566.67889927,
-            1e-05,
-        ),
+        (10, 2),
+        (100, 100),
+        (1000, 1000),
+        (10000, 10000),
+        (100000, 100000),
+        (1000000, 1000000),
+        (10000000, 10000000),
+        (100000000, 100000000),
+        (1000000000, 1000000000),
+        (134566.678899, 134566.67889927),
+        (0.333333333333333, 0.333333333333333),
+        (0.333333333333333, 0.1111111111111110),
+        (1000000000.033647474859, 1000000000.039484859),
+        (10000000000000.333333333333333, 10000000000000.67889927),
     ],
 )
-def test_constant_product_swap(reserve_1, reserve_2, precision):
+def test_constant_product_swap(reserve_1, reserve_2):
     """Tests that swaping produces the same curve as constant_product_curve."""
     x, y = constant_product_curve(
         Pool("A", reserve_1),
@@ -87,7 +88,7 @@ def test_constant_product_swap(reserve_1, reserve_2, precision):
     x_actual, y_actual = [x[0]], [y[0]]
     pool_1, pool_2 = Pool("A", x[0]), Pool("B", y[0])
     while i < len(dx):
-        dy, _ = constant_product_swap(dx[i], pool_1, pool_2, precision=precision)
+        dy, _ = constant_product_swap(dx[i], pool_1, pool_2)
         x_actual.append(x_actual[i] + dx[i])
         y_actual.append(y_actual[i] - dy)
         i = i + 1

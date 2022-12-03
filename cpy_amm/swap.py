@@ -200,9 +200,10 @@ def assert_cp_invariant(x: float, y: float, k: float, precision: float | None = 
         None
 
     """
-    precision = precision or 1e-7
+    precision = precision or 1e-14
     try:
-        assert abs((x * y) - k) <= precision
+        assert k > 0
+        assert abs(k - (x * y)) / k <= precision
     except Exception as e:
         logger.error("Constant product invariant not satisfied")
         logger.error(f"diff={abs((x*y) - k)}")
