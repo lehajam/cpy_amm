@@ -1,24 +1,23 @@
+from copy import deepcopy
+
 from bokeh.io import show
 from bokeh.layouts import column, grid
 from bokeh.models import ColumnDataSource, HoverTool
 from bokeh.plotting import Figure, figure
 from bokeh.transform import dodge
 
+from .market import MarketPair, Pool, TradeOrder
 from .swap import (
     MidPrice,
-    Pool,
     constant_product_curve,
     constant_product_swap,
     order_book,
     price_impact_range,
-    reset_pools,
 )
 
 
 def new_constant_product_figure(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
+    mkt: MarketPair,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -58,30 +57,26 @@ def new_constant_product_figure(
 
     """
     p = bokeh_figure or figure(
-        title=f"Constant Product AMM Curve for the pair {pool_1.ticker}/{pool_2.ticker}",
+        title=f"Constant Product AMM Curve for the pair {mkt.ticker}",
         plot_width=plot_width,
         plot_height=plot_height,
     )
-    p.xaxis.axis_label = f"Amount {pool_1.ticker}"
-    p.yaxis.axis_label = f"Amount {pool_2.ticker}"
-    x, y = constant_product_curve(
-        pool_1, pool_2, k=k, x_min=x_min, x_max=x_max, num=num
-    )
+    p.xaxis.axis_label = f"Amount {mkt.pool_1.ticker}"
+    p.yaxis.axis_label = f"Amount {mkt.pool_2.ticker}"
+    x, y = constant_product_curve(mkt, x_min=x_min, x_max=x_max, num=num)
     p.line(x, y, line_width=2, color="navy", alpha=0.6, legend_label="Y=K/X")
     # display current mid price of the pools
     p = with_price_info(
         p,
-        MidPrice(f"{pool_1.ticker}/{pool_2.ticker}", pool_1.balance, pool_2.balance),
+        MidPrice(f"{mkt.ticker}", mkt.pool_1.balance, mkt.pool_2.balance),
         "Mid Price",
     )
     return p
 
 
 def new_price_impact_figure(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
-    dx: float | None = None,
+    mkt: MarketPair,
+    order: TradeOrder | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -126,10 +121,10 @@ def new_price_impact_figure(
 
     """
     p = new_constant_product_figure(
-        pool_1, pool_2, k, x_min, x_max, num, bokeh_figure, plot_width, plot_height
+        mkt, x_min, x_max, num, bokeh_figure, plot_width, plot_height
     )
     # coomputes price impact range
-    price_impact = price_impact_range(pool_1, pool_2, k=k, dx=dx, precision=precision)
+    price_impact = price_impact_range(mkt, order, precision=precision)
     # plot price impact range
     p.line(
         [price_impact.start.x, price_impact.end.x],
@@ -145,9 +140,7 @@ def new_price_impact_figure(
 
 
 def new_order_book_figure(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
+    mkt: MarketPair,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -188,15 +181,15 @@ def new_order_book_figure(
 
     """
     p = figure(
-        title=f"Constant Product AMM Depth for the pair {pool_1.ticker}/{pool_2.ticker}",
+        title=f"Constant Product AMM Depth for the pair {mkt.ticker}",
         plot_width=plot_width,
         plot_height=plot_height,
     )
-    p.xaxis.axis_label = f"{pool_1.ticker}/{pool_2.ticker} Mid Price"
+    p.xaxis.axis_label = f"{mkt.ticker} Mid Price"
     p.yaxis.axis_label = "Order Size"
-    x, mid, q = order_book(pool_1, pool_2, k=k, x_min=x_min, x_max=x_max, num=num)
-    bid = [q_i if x_i < pool_1.initial_deposit else 0 for (x_i, q_i) in zip(x, q)]
-    ask = [q_i if x_i > pool_1.initial_deposit else 0 for (x_i, q_i) in zip(x, q)]
+    x, mid, q = order_book(mkt, x_min=x_min, x_max=x_max, num=num)
+    bid = [q_i if x_i < mkt.pool_1.initial_deposit else 0 for (x_i, q_i) in zip(x, q)]
+    ask = [q_i if x_i > mkt.pool_1.initial_deposit else 0 for (x_i, q_i) in zip(x, q)]
     source = ColumnDataSource(data={"mid": mid, "bid": bid, "ask": ask})
     # depth eg. binance style order book
     p.varea_stack(
@@ -297,10 +290,8 @@ def with_price_info(p, mid: MidPrice, price_label: str) -> figure:
 
 
 def cp_amm_autoviz(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
-    dx: float | None = None,
+    mkt: MarketPair,
+    order: TradeOrder | None = None,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -347,12 +338,9 @@ def cp_amm_autoviz(
             Else, 1 plot per row is displayed
 
     """
-
-    dx = dx or 0.1 * pool_1.balance
+    order = order or TradeOrder.create_default(mkt)
     p1 = new_constant_product_figure(
-        pool_1,
-        pool_2,
-        k=k,
+        mkt,
         plot_width=plot_width,
         plot_height=plot_height,
         x_min=x_min,
@@ -360,10 +348,8 @@ def cp_amm_autoviz(
         num=num,
     )
     p2 = new_price_impact_figure(
-        pool_1,
-        pool_2,
-        k=k,
-        dx=dx,
+        mkt,
+        order,
         precision=precision,
         plot_width=plot_width,
         plot_height=plot_height,
@@ -371,18 +357,16 @@ def cp_amm_autoviz(
         x_max=x_max,
         num=num,
     )
-    constant_product_swap(dx, pool_1, pool_2, k=k, precision=precision)
+    swap_mkt = deepcopy(mkt)
+    constant_product_swap(swap_mkt, order, precision=precision)
     p3 = new_pool_figure(
-        pool_1,
-        pool_2,
+        swap_mkt.pool_1,
+        swap_mkt.pool_2,
         ["Before Swap", "After Swap"],
         plot_width=plot_width,
         plot_height=plot_height,
     )
-    reset_pools(pool_1, pool_2)
-    p4 = new_order_book_figure(
-        pool_1, pool_2, k=k, plot_width=plot_width, plot_height=plot_height
-    )
+    p4 = new_order_book_figure(mkt, plot_width=plot_width, plot_height=plot_height)
     if compact:
         show(grid([[p1, p2], [p3, p4]], sizing_mode="stretch_both"))
     else:

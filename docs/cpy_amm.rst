@@ -4,6 +4,14 @@ cpy\_amm package
 Submodules
 ----------
 
+cpy\_amm.market module
+----------------------
+
+.. automodule:: cpy_amm.market
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 cpy\_amm.plotting module
 ------------------------
 

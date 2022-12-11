@@ -4,61 +4,7 @@ from typing import Tuple
 import numpy as np
 from loguru import logger
 
-
-class Pool:
-    """Liquidity pool."""
-
-    def __init__(self, ticker: str, initial_deposit: float):
-        # Ticker for the coin in the pool
-        self.ticker = ticker
-        # The ongoing reserves of the pool
-        self.reserves = [float(initial_deposit)]
-
-    def reset(self):
-        """Reset the pool."""
-        self.reserves = [self.initial_deposit]
-
-    @property
-    def balance(self) -> float:
-        """The current balance of the pool."""
-        assert len(self.reserves) > 0
-        return self.reserves[-1]
-
-    @property
-    def initial_deposit(self) -> float:
-        """The initial deposit in the pool."""
-        assert len(self.reserves) > 0
-        return self.reserves[0]
-
-
-class MarketQuote:
-    def __init__(self, trading_pair: str, price: float):
-        """Quote for the market price of a trading pair.
-
-        Args:
-            trading_pair (str) :
-                The trading pair ticker eg. ETH/USD
-
-            price (float) :
-                The market price of the trading pair
-
-        """
-        assert trading_pair.count("/") == 1
-        base_quote = trading_pair.split("/")
-        self.token_base = base_quote[0]
-        self.token_quote = base_quote[1]
-        self.price = price
-
-    @property
-    def ticker(self) -> str:
-        """The ticker for the trading pair."""
-        return f"{self.token_base}/{self.token_quote}"
-
-    def __str__(self):
-        return f"{self.ticker}={self.price}"
-
-    def __repr__(self):
-        return f"{self.ticker}={self.price}"
+from .market import MarketPair, TradeOrder
 
 
 class MidPrice:
@@ -112,74 +58,6 @@ class PriceImpactRange:
         self.end = end
 
 
-def reset_pools(*pools):
-    for pool in pools:
-        assert isinstance(pool, Pool)
-        pool.reset()
-
-
-def init_liquidity(liq_amount: float, quote_1: MarketQuote, quote_2: MarketQuote):
-    """Initializes a given amount of liquidity in the AMM.
-
-    Args:
-        liq_amount (float) :
-            The amount of liquidity to be added expressed
-            in FIAT currency or token eg. USD, EUR, USDT, ETH etc.
-
-        quote_1 (MarketQuote) :
-            The market quote for the token in the first pool
-
-        quote_2 (MarketQuote) :
-            The market quote for the token in the second pool
-
-    Returns:
-        None
-
-    """
-    liq_per_token = liq_amount / 2.0
-    x_0 = liq_per_token / quote_1.price
-    y_0 = liq_per_token / quote_2.price
-    k_0 = x_0 * y_0
-    return Pool(quote_1.token_base, x_0), Pool(quote_2.token_base, y_0), k_0
-
-
-def add_liquidity(
-    x: Pool, y: Pool, liq_amount: float, quote_1: MarketQuote, quote_2: MarketQuote
-):
-    """Adds a given amount of liquidity in the AMM at the current price of the pool. The
-    amount of token to add in each pool is determined from the market price of the tokens
-    and the current price of the pool.
-
-    Args:
-        x (Pool) :
-            Liquidity pool for tokens A
-
-        y (Pool) :
-            Liquidity pool for tokens B
-
-        liq_amount (float) :
-            The amount of liquidity to be added expressed
-            in FIAT currency or token eg. USD, EUR, USDT, ETH etc.
-
-        quote_1 (MarketQuote) :
-            The market quote for the token in the first pool
-
-        quote_2 (MarketQuote) :
-            The market quote for the token in the second pool
-
-    Returns:
-        None
-
-    """
-    alpha = (quote_1.price * x.balance) / (
-        quote_1.price * x.balance + quote_2.price * y.balance
-    )
-    liq_amount_1 = liq_amount * alpha / quote_1.price
-    liq_amount_2 = liq_amount * (1 - alpha) / quote_2.price
-    x.reserves.append(x.balance + liq_amount_1)
-    y.reserves.append(y.balance + liq_amount_2)
-
-
 def assert_cp_invariant(x: float, y: float, k: float, precision: float | None = None):
     """Asserts that the constant product is invariant.
 
@@ -216,10 +94,8 @@ def assert_cp_invariant(x: float, y: float, k: float, precision: float | None = 
 
 
 def constant_product_swap(
-    dx: float,
-    x: Pool,
-    y: Pool,
-    k: float | None = None,
+    mkt: MarketPair,
+    order: TradeOrder,
     trading_fee: float = 0.003,
     precision: float | None = None,
 ) -> Tuple[float, float]:
@@ -240,19 +116,21 @@ def constant_product_swap(
             (Amount of tokens B out, Swap execution price)
 
     """
-    assert dx > 0
-    # constant product invariant
-    k = k or x.balance * y.balance
-    # assert k is invariant
-    assert_cp_invariant(x.balance, y.balance, k, precision)
+    assert order.order_size > 0
+    # the order size
+    dx = order.order_size
+    # get the pools in correct order
+    pool_1, pool_2 = mkt.get_pools(order.ticker)
+    # the reserves depending on the swap direction
+    x, y = pool_1.balance, pool_2.balance
     # calculate dy amount of tokens B to be taken out from the AMM
-    dy = (y.balance * dx) / (x.balance + dx)
+    dy = (y * dx) / (x + dx)
     # add dx amount of tokens A to the AMM
-    x.reserves.append(x.balance + dx)
+    pool_1.reserves.append(x + dx)
     # take dy amount of tokens B out from the AMM
-    y.reserves.append(y.balance - dy)
+    pool_2.reserves.append(y - dy)
     # assert k is still invariant
-    assert_cp_invariant(x.balance, y.balance, k, precision)
+    assert_cp_invariant(x, y, mkt.cp_invariant, precision)
     # return dy amount of tokens B taken out and execution price
     return dy, dx / dy
 
@@ -280,9 +158,7 @@ def swap_price(x: float, y: float, dx: float) -> float:
 
 
 def constant_product_curve(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
+    mkt: MarketPair,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -313,21 +189,17 @@ def constant_product_curve(
             (Amount of tokens B out, Swap execution price)
 
     """
-    # constant product invariant
-    k = k or pool_1.balance * pool_2.balance
-    x_min = x_min or 0.1 * pool_1.balance
-    x_max = x_max or 5.0 * pool_1.balance
     num = num or 1000
+    x_min = x_min or 0.1 * mkt.pool_1.balance
+    x_max = x_max or 5.0 * mkt.pool_1.balance
     x = np.linspace(x_min, x_max, num=num)
-    y = k / x
+    y = mkt.cp_invariant / x
     return x, y
 
 
 def price_impact_range(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
-    dx: float | None = None,
+    mkt: MarketPair,
+    order: TradeOrder | None = None,
     precision: float | None = None,
 ) -> PriceImpactRange:
     """Computes the price impact range given liquidity pool 1, liquidity pool 2 and an
@@ -354,13 +226,14 @@ def price_impact_range(
             Price impact range for given pools and order size
 
     """
-    # constant product invariant
-    k = k or pool_1.balance * pool_2.balance
+    # create default trade order
+    order = order or TradeOrder.create_default(mkt)
     # trade size provided or defaulted to 10% of x
-    dx = dx or 0.1 * pool_1.balance
+    dx = order.order_size
+    # constant product invariant
+    k = mkt.cp_invariant
     # start: (x,y)
-    x_start = pool_1.balance
-    y_start = pool_2.balance
+    x_start, y_start = mkt.get_reserves(order.ticker)
     # end: (x+dx, y-dy)
     x_end = x_start + dx
     y_end = y_start * (1.0 - dx / (x_start + dx))
@@ -372,19 +245,15 @@ def price_impact_range(
     # (x, y) of the mid price equal to the execution price
     x_mid = sqrt(k * exec_price)
     y_mid = k / sqrt(k * exec_price)
-    # the ticker for the XY pair eg. ETH/DAI
-    ticker = f"{pool_1.ticker}/{pool_2.ticker}"
     return PriceImpactRange(
-        MidPrice(ticker, x_start, y_start),
-        MidPrice(ticker, x_mid, y_mid),
-        MidPrice(ticker, x_end, y_end),
+        MidPrice(mkt.ticker, x_start, y_start),
+        MidPrice(mkt.ticker, x_mid, y_mid),
+        MidPrice(mkt.ticker, x_end, y_end),
     )
 
 
 def order_book(
-    pool_1: Pool,
-    pool_2: Pool,
-    k: float | None = None,
+    mkt: MarketPair,
     x_min: float | None = None,
     x_max: float | None = None,
     num: int | None = None,
@@ -417,9 +286,9 @@ def order_book(
 
     """
     q = []
-    x_0 = float(pool_1.initial_deposit)
-    p_0 = float(pool_1.initial_deposit / pool_2.initial_deposit)
-    x, y = constant_product_curve(pool_1, pool_2, k, x_min, x_max, num)
+    x_0 = float(mkt.pool_1.initial_deposit)
+    p_0 = float(mkt.pool_1.initial_deposit / mkt.pool_2.initial_deposit)
+    x, y = constant_product_curve(mkt, x_min, x_max, num)
     p = [x_i / y_i for x_i, y_i in zip(x, y)]
     for p_i in p:
         q_i = float(0)
