@@ -24,7 +24,7 @@ def test_mkt_creation():
     """Tests creation of a market pair."""
     pool_1 = Pool("A", 100)
     pool_2 = Pool("B", 10)
-    mkt = MarketPair(pool_1, pool_2)
+    mkt = MarketPair(pool_1, pool_2, 0)
     assert mkt.ticker == "A/B"
     assert mkt.pool_1.balance == 100
     assert mkt.pool_2.balance == 10
@@ -34,7 +34,7 @@ def test_mkt_get_reserves():
     """Tests creation of a market pair."""
     pool_1 = Pool("A", 100)
     pool_2 = Pool("B", 10)
-    mkt = MarketPair(pool_1, pool_2)
+    mkt = MarketPair(pool_1, pool_2, 0)
     x, y = mkt.get_reserves(mkt.ticker)
     assert x == 100
     assert y == 10
@@ -66,7 +66,7 @@ def test_constant_product_curve(reserve_1, reserve_2):
     """Tests that the constant product curve remains invariant in the XY curve produced
     by constant_product_curve."""
     x, y = constant_product_curve(
-        MarketPair(Pool("A", reserve_1), Pool("B", reserve_2)),
+        MarketPair(Pool("A", reserve_1), Pool("B", reserve_2), 0),
         x_min=0.1 * reserve_1,
         x_max=10.0 * reserve_2,
         num=1000,
@@ -99,7 +99,7 @@ def test_constant_product_curve(reserve_1, reserve_2):
 def test_constant_product_swap(reserve_1, reserve_2):
     """Tests that swaping produces the same curve as constant_product_curve."""
     x, y = constant_product_curve(
-        MarketPair(Pool("A", reserve_1), Pool("B", reserve_2)),
+        MarketPair(Pool("A", reserve_1), Pool("B", reserve_2), 0),
         x_min=0.01 * reserve_1,
         x_max=10.0 * reserve_2,
         num=10000,
@@ -108,9 +108,9 @@ def test_constant_product_swap(reserve_1, reserve_2):
     i = 0
     dx = np.diff(x)
     x_actual, y_actual = [x[0]], [y[0]]
-    mkt = MarketPair(Pool("A", x[0]), Pool("B", y[0]))
+    mkt = MarketPair(Pool("A", x[0]), Pool("B", y[0]), 0)
     while i < len(dx):
-        order = TradeOrder(mkt.ticker, dx[i])
+        order = TradeOrder(mkt.ticker, dx[i], 0)
         dy, _ = constant_product_swap(mkt, order)
         x_actual.append(x_actual[i] + dx[i])
         y_actual.append(y_actual[i] - dy)

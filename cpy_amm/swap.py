@@ -62,17 +62,17 @@ def assert_cp_invariant(x: float, y: float, k: float, precision: float | None = 
     """Asserts that the constant product is invariant.
 
     Args:
-        k (float) :
-            Constant product
-
         x (float) :
             Reserve of tokens A
 
         y (float) :
             Reserve of tokens B
 
+        k (float) :
+            Constant product invariant
+
         precision (float) :
-            Precision at which the invariant is evaluated
+            Precision at which the constant product invariant is evaluated
 
     Returns:
         None
@@ -96,20 +96,19 @@ def assert_cp_invariant(x: float, y: float, k: float, precision: float | None = 
 def constant_product_swap(
     mkt: MarketPair,
     order: TradeOrder,
-    trading_fee: float = 0.003,
     precision: float | None = None,
 ) -> Tuple[float, float]:
     """Swap tokens A for tokens B from pool with a XY constant product.
 
     Args:
-        dx (float) :
-            Amount of tokens A in
+        mkt (MarketPair) :
+            The market pair to trade against
 
-        x (Pool) :
-            Pool representing the reserve of tokens A
+        order (TradeOrder) :
+            The trade order to execute
 
-        y (float) :
-            Pool representing the reserve of tokens B
+        precision (float) :
+            Precision at which constant product invariant is evaluated
 
     Returns:
         Tuple[float, float] :
@@ -118,7 +117,7 @@ def constant_product_swap(
     """
     assert order.order_size > 0
     # the order size
-    dx = order.order_size
+    dx = order.net_order_size
     # get the pools in correct order
     pool_1, pool_2 = mkt.get_pools(order.ticker)
     # the reserves depending on the swap direction
@@ -129,8 +128,10 @@ def constant_product_swap(
     pool_1.reserves.append(x + dx)
     # take dy amount of tokens B out from the AMM
     pool_2.reserves.append(y - dy)
+    # add transaction fees
+    mkt.transaction_fees[pool_1.ticker].append(order.cash_transaction_fee)
     # assert k is still invariant
-    assert_cp_invariant(x, y, mkt.cp_invariant, precision)
+    assert_cp_invariant(pool_1.balance, pool_2.balance, mkt.cp_invariant, precision)
     # return dy amount of tokens B taken out and execution price
     return dy, dx / dy
 
@@ -140,14 +141,14 @@ def swap_price(x: float, y: float, dx: float) -> float:
     x and y.
 
     Args:
-        dx (float) :
-            Order size
-
         x (float) :
             Reserve of tokens A
 
         y (float) :
             Reserve of tokens B
+
+        dx (float) :
+            Order size
 
     Returns:
         float :
@@ -166,14 +167,8 @@ def constant_product_curve(
     """Computes the AMM curve Y = K/X for a constant product AMM K = XY
 
     Args:
-        pool_1 (Pool) :
-            liquidity pool 1 eg. X
-
-        pool_1 (Pool) :
-            liquidity pool 2 eg. Y
-
-        k (float) :
-            constant product invariant
+        mkt (MarketPair) :
+            The market pair to trade against
 
         x_min (float) :
             minimum value of X
@@ -202,21 +197,14 @@ def price_impact_range(
     order: TradeOrder | None = None,
     precision: float | None = None,
 ) -> PriceImpactRange:
-    """Computes the price impact range given liquidity pool 1, liquidity pool 2 and an
-    order size.
+    """Price impact of a trade order against a market.
 
     Args:
-        pool_1 (Pool) :
-            liquidity pool 1 eg. X
+        mkt (MarketPair) :
+            The market pair to trade against
 
-        pool_1 (Pool) :
-            liquidity pool 2 eg. Y
-
-        k (float) :
-            constant product invariant. Defaults to XY.
-
-        dx (float) :
-            order size. Defaults to 10% of reserves of liquidity pool 1.
+        order (TradeOrder) :
+            The trade order to execute
 
         precision (float) :
             precision at which the invariant is evaluated
@@ -262,14 +250,8 @@ def order_book(
     the paper "Order Book Depth and Liquidity Provision in Automated Market Makers".
 
     Args:
-        pool_1 (Pool) :
-            liquidity pool 1 eg. X
-
-        pool_1 (Pool) :
-            liquidity pool 2 eg. Y
-
-        k (float) :
-            constant product invariant
+        mkt (MarketPair) :
+            The market pair to trade against
 
         x_min (float) :
             minimum value of X

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple
+from typing import List, Tuple
 
 
 class Pool:
@@ -61,13 +61,20 @@ class MarketQuote:
 
 
 class MarketPair:
-    """Market pair."""
+    """A Market pair managing a liquidity pool made up of reserves of two tokens."""
 
-    def __init__(self, pool_1: Pool, pool_2: Pool):
+    def __init__(self, pool_1: Pool, pool_2: Pool, swap_fee: float):
         # The ongoing reserves of the pool
         self.pool_1 = pool_1
         # The ongoing reserves of the pool
         self.pool_2 = pool_2
+        # The swap fee
+        self.swap_fee = swap_fee
+        # Transaction fees collected
+        self.transaction_fees: dict[str, List[float]] = {
+            pool_1.ticker: [],
+            pool_2.ticker: [],
+        }
 
     @property
     def ticker(self) -> str:
@@ -85,7 +92,18 @@ class MarketPair:
         return self.pool_1.balance * self.pool_2.balance
 
     def get_pools(self, trading_pair: str) -> Tuple[Pool, Pool]:
-        """The constant product invariant."""
+        """Return pools in correct order based on the trading pairs (normal or inversed).
+
+        Args:
+            trading_pair (str) :
+                The trading pair ticker eg. ETH/USD
+
+        Returns:
+            Tuple[Pool, Pool]:
+                (Liquidity pool 1, Liquidity pool 2)
+
+        """
+
         if trading_pair == self.ticker:
             return self.pool_1, self.pool_2
         elif trading_pair == self.inverse_ticker:
@@ -94,7 +112,18 @@ class MarketPair:
             raise Exception(f"Unknown trading pair {trading_pair}")
 
     def get_reserves(self, trading_pair: str) -> Tuple[float, float]:
-        """The constant product invariant."""
+        """Return reserves in correct order based on the trading pairs (normal or
+        inversed).
+
+        Args:
+            trading_pair (str) :
+                The trading pair ticker eg. ETH/USD
+
+        Returns:
+            Tuple[Pool, Pool]:
+                (Liquidity pool 1, Liquidity pool 2)
+
+        """
         pool_1, pool_2 = self.get_pools(trading_pair)
         return pool_1.balance, pool_2.balance
 
@@ -136,9 +165,10 @@ class MarketPair:
 
 
 def new_market(
-    liq_amount: float, quote_1: MarketQuote, quote_2: MarketQuote
+    liq_amount: float, quote_1: MarketQuote, quote_2: MarketQuote, swap_fee: float
 ) -> MarketPair:
-    """Initializes a given amount of liquidity in the AMM.
+    """Initializes a market with a given amount of liquidity and market prices for the
+    tokens.
 
     Args:
         liq_amount (float) :
@@ -151,28 +181,37 @@ def new_market(
         quote_2 (MarketQuote) :
             The market quote for the token in the second pool
 
+        swap_fee (float) :
+            The transaction fee per swap always paid in the base currency (token in)
+
     Returns:
-        None
+        MarketPair:
+            New market pair
 
     """
     liq_per_token = liq_amount / 2.0
     x_0 = liq_per_token / quote_1.price
     y_0 = liq_per_token / quote_2.price
-    return MarketPair(Pool(quote_1.token_base, x_0), Pool(quote_2.token_base, y_0))
+    return MarketPair(
+        Pool(quote_1.token_base, x_0), Pool(quote_2.token_base, y_0), swap_fee
+    )
 
 
 class TradeOrder:
-    """Trade order."""
+    """A trade order for a swap to execute."""
 
-    def __init__(self, trading_pair: str, order_size: float):
-        #
+    def __init__(self, trading_pair: str, order_size: float, transaction_fees: float):
         ticker_in, ticker_out = split_ticker(trading_pair)
-        # The ongoing reserves of the pool
+        # ticker of the tocken swapped in
         self.ticker_in = ticker_in
-        # The ongoing reserves of the pool
+        # ticker of the tocken swapped out
         self.ticker_out = ticker_out
-        # The ongoing reserves of the pool
+        # the order size
         self.order_size = order_size
+        # the order size minus transaction fees
+        self.net_order_size = self.order_size / (1.0 + transaction_fees)
+        # the trannsaction fees
+        self.cash_transaction_fee = self.order_size - self.net_order_size
 
     @property
     def ticker(self) -> str:
@@ -181,4 +220,5 @@ class TradeOrder:
 
     @classmethod
     def create_default(cls, mkt: MarketPair) -> TradeOrder:
-        return cls(mkt.ticker, 0.1 * mkt.pool_1.balance)
+        """Default order equal to 10% of the first pool."""
+        return cls(mkt.ticker, 0.1 * mkt.pool_1.balance, mkt.swap_fee)
