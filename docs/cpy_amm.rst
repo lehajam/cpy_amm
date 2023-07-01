@@ -4,6 +4,22 @@ cpy\_amm package
 Submodules
 ----------
 
+cpy\_amm.binance\_loader module
+-------------------------------
+
+.. automodule:: cpy_amm.binance_loader
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cpy\_amm.gbm\_histo module
+--------------------------
+
+.. automodule:: cpy_amm.gbm_histo
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 cpy\_amm.market module
 ----------------------
 
@@ -20,10 +36,26 @@ cpy\_amm.plotting module
    :undoc-members:
    :show-inheritance:
 
+cpy\_amm.simulation module
+--------------------------
+
+.. automodule:: cpy_amm.simulation
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 cpy\_amm.swap module
 --------------------
 
 .. automodule:: cpy_amm.swap
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+cpy\_amm.utils module
+---------------------
+
+.. automodule:: cpy_amm.utils
    :members:
    :undoc-members:
    :show-inheritance:

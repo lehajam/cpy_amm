@@ -115,28 +115,113 @@ def constant_product_swap(
             (Amount of tokens B out, Swap execution price)
 
     """
-    assert order.order_size > 0
-    # the order size
-    dx = order.net_order_size
-    # get the pools in correct order
-    pool_1, pool_2 = mkt.get_pools(order.ticker)
+    assert order.order_size != 0
     # the reserves depending on the swap direction
-    x, y = pool_1.balance, pool_2.balance
-    # calculate dy amount of tokens B to be taken out from the AMM
-    dy = (y * dx) / (x + dx)
-    # add dx amount of tokens A to the AMM
-    pool_1.reserves.append(x + dx)
-    # take dy amount of tokens B out from the AMM
-    pool_2.reserves.append(y - dy)
-    # add transaction fees
-    mkt.transaction_fees[pool_1.ticker].append(order.cash_transaction_fee)
-    # assert k is still invariant
-    assert_cp_invariant(pool_1.balance, pool_2.balance, mkt.cp_invariant, precision)
-    # return dy amount of tokens B taken out and execution price
-    return dy, dx / dy
+    x, y = mkt.pool_1.balance, mkt.pool_2.balance
+    # the order size
+    if order.direction == "buy":
+        dx = order.net_order_size
+        # calculate dy amount of tokens B to be taken out from the AMM
+        dy = (y * dx) / (x + dx)
+        # add dx amount of tokens A to the AMM
+        mkt.pool_1.reserves.append(x + dx)
+        # take dy amount of tokens B out from the AMM
+        mkt.pool_2.reserves.append(y - dy)
+        mkt.volume_base -= dy
+        mkt.volume_quote += dx / (1 - mkt.swap_fee)
+        mkt.total_fees_quote += mkt.swap_fee * dx / (1 - mkt.swap_fee)
+        # assert k is still invariant
+        assert_cp_invariant(
+            mkt.pool_1.balance, mkt.pool_2.balance, mkt.cp_invariant, precision
+        )
+        return dy, dx / dy
+    elif order.direction == "sell":
+        dy = order.net_order_size
+        # calculate dx amount of tokens A to be taken out from the AMM
+        dx = (x * dy) / (y + dy)
+        # add dx amount of tokens A to the AMM
+        mkt.pool_1.reserves.append(x - dx)
+        # take dy amount of tokens B out from the AMM
+        mkt.pool_2.reserves.append(y + dy)
+        mkt.volume_base += dy
+        mkt.volume_quote -= dx / (1 - mkt.swap_fee)
+        mkt.total_fees_quote += mkt.swap_fee * dx / (1 - mkt.swap_fee)
+        # assert k is still invariant
+        assert_cp_invariant(
+            mkt.pool_1.balance, mkt.pool_2.balance, mkt.cp_invariant, precision
+        )
+        return dx, dx / dy
+    else:
+        raise Exception(
+            f"Trade order direction must be buy or sell. Got {order.direction}"
+        )
 
 
-def swap_price(x: float, y: float, dx: float) -> float:
+def mock_constant_product_swap(
+    mkt: MarketPair,
+    order: TradeOrder,
+    precision: float | None = None,
+) -> Tuple[float, float]:
+    """Swap tokens A for tokens B from pool with a XY constant product.
+
+    Args:
+        mkt (MarketPair) :
+            The market pair to trade against
+
+        order (TradeOrder) :
+            The trade order to execute
+
+        precision (float) :
+            Precision at which constant product invariant is evaluated
+
+    Returns:
+        Tuple[float, float] :
+            (Amount of tokens B out, Swap execution price)
+
+    """
+    assert order.order_size != 0
+    # the reserves depending on the swap direction
+    x, y = mkt.pool_1.balance, mkt.pool_2.balance
+    # the order size
+    if order.direction == "buy":
+        dx = order.order_size
+        # calculate dy amount of tokens B to be taken out from the AMM
+        dy = dx / mkt.mkt_price
+        # add dx amount of tokens A to the AMM
+        mkt.pool_1.reserves.append(x + dx)
+        # take dy amount of tokens B out from the AMM
+        mkt.pool_2.reserves.append(y - dy)
+        mkt.volume_base -= dy
+        mkt.volume_quote += dx
+        mkt.total_fees_quote += mkt.swap_fee * dx
+        # assert k is still invariant
+        assert_cp_invariant(
+            mkt.pool_1.balance, mkt.pool_2.balance, mkt.cp_invariant, precision
+        )
+        return dy, dx / dy
+    elif order.direction == "sell":
+        dy = order.order_size
+        # calculate dx amount of tokens A to be taken out from the AMM
+        dx = dy * mkt.mkt_price
+        # add dx amount of tokens A to the AMM
+        mkt.pool_1.reserves.append(x - dx)
+        # take dy amount of tokens B out from the AMM
+        mkt.pool_2.reserves.append(y + dy)
+        mkt.volume_base += dy
+        mkt.volume_quote -= dx
+        mkt.total_fees_quote += mkt.swap_fee * dx
+        # assert k is still invariant
+        assert_cp_invariant(
+            mkt.pool_1.balance, mkt.pool_2.balance, mkt.cp_invariant, precision
+        )
+        return dx, dx / dy
+    else:
+        raise Exception(
+            f"Trade order direction must be buy or sell. Got {order.direction}"
+        )
+
+
+def swap_price(x, y, dx) -> float:
     """Computes the swap execution price for an order size given two pools with reserves
     x and y.
 
@@ -156,6 +241,42 @@ def swap_price(x: float, y: float, dx: float) -> float:
 
     """
     return (x + dx) / y
+
+
+def calc_arb_trade(
+    mkt: MarketPair, tx_mkt_fee=0.002, tx_network_fee=0
+) -> Tuple[float, float]:
+    """Computes the trade size and P&L for an arb trade which will align the mid price of
+    the market pair with the market price.
+
+    Args:
+        mkt (MarketPair) :
+            The market pair to trade against
+
+        tx_mkt_fee (float) :
+            The market fee to pay for the mkt leg of the arb
+
+        tx_network_fee (float) :
+            The network fee to pay expressed as a percentage of the trade size
+
+    Returns:
+        Tuple[float, float] :
+            (Trade order size, Trade order P&L)
+
+    """
+    dx, dy = mkt.get_delta_reserves()
+    if dy == 0 or dx == 0:
+        return 0, 0
+
+    exec_price = dx / dy
+    tx_fees = tx_mkt_fee + mkt.swap_fee + tx_network_fee
+    if dx > 0:  # long pool / short mkt
+        qty = dx
+        spread = (mkt.mkt_price - exec_price) / exec_price
+    else:  # short pool / long mkt
+        qty = dy
+        spread = (exec_price - mkt.mkt_price) / exec_price
+    return qty, (spread - tx_fees) * abs(dx)
 
 
 def constant_product_curve(

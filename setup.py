@@ -23,7 +23,7 @@ test_requirements = [
 ]
 
 setup(
-    author="Lehajam Boujemaoui",
+    author="cpyamm.lib@gmail.com",
     author_email="cpyamm.lib@gmail.com",
     python_requires=">=3.10",
     classifiers=[
