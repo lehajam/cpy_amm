@@ -466,24 +466,3 @@ class TradeOrder:
     def create_default(cls, mkt: MarketPair) -> TradeOrder:
         """Default order equal to 10% of the first pool."""
         return cls(mkt.ticker, 0.1 * mkt.pool_1.balance, mkt.swap_fee)
-
-
-# import ctypes
-
-# class TradeOrder(ctypes.Structure):
-#     _fields_ = [("ticker", ctypes.c_char * 10),
-#                 ("direction", ctypes.c_char * 10),
-#                 ("order_size", ctypes.c_float),
-#                 ("net_order_size", ctypes.c_float),
-#                 ("cash_transaction_fee", ctypes.c_float)]
-
-#     def __init__(self, trading_pair: str, order_size: float, transaction_fees: float):
-#         self.ticker = trading_pair.encode('utf-8')
-#         self.order_size = order_size
-#         self.direction = ("buy" if order_size > 0 else "sell").encode('utf-8')
-#         self.net_order_size = self.order_size / (1.0 + transaction_fees)
-#         self.cash_transaction_fee = transaction_fees * self.order_size
-
-#     @classmethod
-#     def create_default(cls, mkt: MarketPair) -> TradeOrder:
-#         return cls(mkt.ticker, 0.1 * mkt.pool_1.balance, mkt.swap_fee)
